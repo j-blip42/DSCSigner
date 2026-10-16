@@ -1,0 +1,40 @@
+# Things that must never end up in a public repository.
+#
+# The first rule is the one that matters. This tool is pointed at client
+# documents all day, and a stray "git add ." in a working folder is all it
+# takes to publish one. PDFs are excluded outright; if you ever genuinely need
+# to commit one, do it deliberately with "git add -f".
+*.pdf
+_signature_preview/
+
+# A personal office stamp. The signer keeps its working copy in
+# %APPDATA%\DSC Signer, but one made or dropped here must not be published.
+my_stamp.png
+my_address_stamp.png
+my_letterhead.png
+stamp.png
+address.png
+letterhead.png
+
+# Build output. The executable is 76 MB and is rebuilt from source anyway,
+# so it does not belong in version control - attach it to a release instead.
+build/
+dist/
+dist_signer/
+*.exe
+
+# Python leftovers
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

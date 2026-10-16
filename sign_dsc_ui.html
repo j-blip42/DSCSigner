@@ -1,0 +1,1197 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DSC Signer</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #fff; --ink: #1b1b1a; --dim: #6b6b66;
+    --line: #dedcd6; --accent: #1f5f4b; --warn: #8a5a00; --bad: #9a2f2f;
+    --good: #1f6f3f; --chip: #eceae4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--line);
+           background: var(--card); display: flex; align-items: baseline;
+           gap: 12px; position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+  header .sub { color: var(--dim); font-size: 12px; }
+  header .spacer { flex: 1; }
+  main { max-width: 1000px; margin: 0 auto; padding: 20px 24px 60px; }
+  section { background: var(--card); border: 1px solid var(--line);
+            border-radius: 8px; padding: 16px 18px; margin-bottom: 16px; }
+  section > h2 { font-size: 13px; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--dim); margin: 0 0 12px; }
+  button { font: inherit; padding: 7px 14px; border-radius: 6px;
+           border: 1px solid var(--line); background: #fbfbfa; cursor: pointer; }
+  button:hover:not(:disabled) { background: #f0efeb; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: #fff;
+                   border-color: var(--accent); font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #17493a; }
+  input[type=text], input[type=password], select {
+    font: inherit; padding: 6px 9px; border: 1px solid var(--line);
+    border-radius: 6px; background: #fff; color: var(--ink); }
+  label.f { display: block; margin-bottom: 10px; }
+  label.f > span { display: block; font-size: 12px; color: var(--dim);
+                   margin-bottom: 3px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+          gap: 0 16px; }
+  .muted { color: var(--dim); }
+  .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 20px;
+          background: var(--chip); font-size: 12px; }
+  .chip.good { background: #dff0e4; color: var(--good); }
+  .chip.warn { background: #f7ecd5; color: var(--warn); }
+  .chip.bad  { background: #f6dede; color: var(--bad); }
+  .note { border-left: 3px solid var(--warn); background: #fdf7ea;
+          padding: 9px 12px; border-radius: 0 6px 6px 0; margin-top: 10px; }
+  .note.bad { border-color: var(--bad); background: #fdf0f0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { font-size: 12px; color: var(--dim); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .files { max-height: 190px; overflow: auto; }
+  .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+            gap: 14px; margin-top: 12px; }
+  .thumb { border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+           background: #fff; }
+  .thumb img { display: block; width: 100%; }
+  .thumb .cap { padding: 6px 8px; font-size: 12px; border-top: 1px solid var(--line); }
+  /* The page image with the signature box floating over it. The box is a
+     real element rather than something painted into the PNG, which is what
+     lets it be picked up and moved. */
+  .shot { position: relative; line-height: 0; touch-action: none; }
+  .box { position: absolute; border: 1.5px solid var(--bad);
+         background: rgba(154,47,47,.10); cursor: grab; touch-action: none;
+         box-sizing: border-box; }
+  .box:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .box.clear { border-color: var(--good); background: rgba(31,111,63,.10); }
+  .box.dragging { cursor: grabbing; background: rgba(31,95,75,.16);
+                  border-color: var(--accent); }
+  .box .grip { position: absolute; inset: 0; display: flex;
+               align-items: center; justify-content: center;
+               font: 10px/1 "Segoe UI", system-ui, sans-serif;
+               color: var(--dim); user-select: none; }
+  /* Typed text over the page. It is sized in container units so it scales
+     with the thumbnail exactly as the page image does, and drawn in Arial at
+     a line height of 1.2 because that is what the signer writes with -
+     Helvetica's metrics at REMARK_LEADING in sign_dsc.py. */
+  .shot { container-type: inline-size; }
+  .thumb.wide { grid-column: 1 / -1; }
+  .txt { position: absolute; font-family: Arial, Helvetica, sans-serif;
+         line-height: 1.2; white-space: pre; cursor: grab; touch-action: none;
+         outline: 1px dashed rgba(31,95,75,.55); outline-offset: 1px;
+         user-select: none; }
+  .txt.empty { color: var(--dim) !important; font-style: italic; }
+  .txt.dragging { cursor: grabbing; outline-style: solid; }
+  .txt:focus-visible, .txt.sel { outline: 2px solid var(--accent); }
+  .stmp { position: absolute; cursor: grab; touch-action: none;
+          user-select: none; -webkit-user-drag: none;
+          outline: 1px dashed rgba(31,95,75,.55); outline-offset: 1px; }
+  .stmp.dragging { cursor: grabbing; outline-style: solid; }
+  .stmp:focus-visible, .stmp.sel { outline: 2px solid var(--accent); }
+  .sedit { display: flex; gap: 8px; align-items: center; margin-top: 8px;
+           font-size: 12px; }
+  .sedit input[type=range] { flex: 1; max-width: 260px; }
+  .sedit button { font-size: 12px; padding: 4px 6px; }
+  .stampchip { height: 44px; width: auto; vertical-align: middle;
+               border: 1px solid var(--line); border-radius: 50%;
+               background: #fff; }
+  .tedit { display: grid; grid-template-columns: 1fr auto auto auto;
+           gap: 6px; align-items: start; margin-top: 8px; }
+  .tedit textarea { font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
+                    padding: 5px 7px; border: 1px solid var(--line);
+                    border-radius: 6px; resize: vertical; width: 100%;
+                    min-height: 34px; }
+  .tedit select, .tedit button { font-size: 12px; padding: 4px 6px; }
+  .tedit .warn { grid-column: 1 / -1; color: var(--bad); font-size: 12px; }
+  .capbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+            margin-top: 5px; }
+  .capbar button { padding: 2px 7px; font-size: 11px; border-radius: 5px; }
+  pre.log { background: #1e1e1c; color: #e6e4dd; padding: 12px; border-radius: 6px;
+            overflow: auto; max-height: 260px; font-size: 12px; margin: 10px 0 0; }
+  .pinbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+          border: 2px solid var(--line); border-top-color: var(--accent);
+          animation: sp .7s linear infinite; vertical-align: -2px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .hide { display: none !important; }
+  .side { min-width: 118px; }
+  .side.on { background: var(--accent); color: #fff; border-color: var(--accent);
+             font-weight: 600; }
+  .side.on:hover { background: #17493a; }
+  .pagebox { width: 150px; }
+  .check { display: flex; gap: 9px; align-items: flex-start; margin-top: 14px;
+           cursor: pointer; }
+  .check input { margin-top: 3px; }
+  .modal { position: fixed; inset: 0; background: rgba(20,20,18,.45);
+           display: flex; align-items: center; justify-content: center;
+           padding: 24px; z-index: 20; }
+  .sheet { background: var(--card); border: 1px solid var(--line);
+           border-radius: 10px; padding: 22px 24px; max-width: 620px;
+           width: 100%; max-height: 80vh; overflow: auto;
+           box-shadow: 0 18px 50px rgba(0,0,0,.22); }
+  .sheet h2 { margin: 0 0 14px; font-size: 16px; }
+  details > summary { font-size: 12px; text-transform: uppercase;
+                      letter-spacing: .05em; }
+</style>
+
+<header>
+  <h1>DSC Signer</h1>
+  <span class="sub">from the makers of Deccan Stat Books</span>
+  <span class="spacer"></span>
+  <span class="sub">local &middot; offline &middot; nothing leaves this machine</span>
+  <button id="quit">Quit server</button>
+</header>
+
+<main>
+  <section>
+    <h2>1 &middot; Token</h2>
+    <div class="row">
+      <button id="probe" class="primary">Detect token</button>
+      <span id="probe-state" class="muted">Not checked yet.</span>
+    </div>
+    <div id="token-out" class="hide" style="margin-top:14px"></div>
+    <details style="margin-top:14px">
+      <summary class="muted" style="cursor:pointer">Which tokens are known to work</summary>
+      <p class="muted" style="margin:10px 0 0">
+        This has been used against real tokens from two vendors &mdash; two
+        DSCs on <b>ePass2003 / HYP2003</b> hardware, and an
+        <b>mToken CryptoID</b> (Longmai). The other drivers it looks for are
+        listed on reasonable grounds but have not been proven here.
+      </p>
+      <p class="muted" style="margin:8px 0 0">
+        Yours may well work anyway &mdash; any PKCS#11 driver in
+        <span class="mono">System32</span> is found automatically. If it does
+        not, the source is published under the AGPL: add your driver to
+        <span class="mono">KNOWN_MODULES</span> in
+        <span class="mono">sign_dsc.py</span> and it will be picked up. If that
+        is not your line of work, hand that file to any capable AI assistant
+        and ask it to add your vendor &mdash; it is a short list to extend.
+      </p>
+    </details>
+  </section>
+
+  <section>
+    <h2>2 &middot; Documents</h2>
+    <div class="row">
+      <button id="pick-files">Choose files&hellip;</button>
+      <button id="pick-folder">Choose a folder&hellip;</button>
+      <button id="clear-files">Clear</button>
+      <span id="file-count" class="muted">No documents selected.</span>
+    </div>
+    <p class="muted" style="margin:10px 0 0">
+      PDFs, or Word documents &mdash; <span class="mono">.docx .doc .docm
+      .rtf</span>. A Word document is converted by <b>Word itself</b>, the same
+      export as <i>Save as PDF</i>, and that PDF is signed. The converted copy
+      is temporary: the only new file beside
+      <span class="mono">Report.docx</span> is
+      <span class="mono">Report - signed.pdf</span>. Word has to be installed
+      on this machine for that.
+    </p>
+    <div id="file-list" class="files mono" style="margin-top:10px"></div>
+  </section>
+
+  <section>
+    <h2>3 &middot; Where the signature goes</h2>
+    <div class="row" style="align-items:flex-end;gap:22px">
+      <label class="f" style="margin-bottom:0">
+        <span>Pages to sign</span>
+        <input type="text" id="pages" class="pagebox" value="1"
+               spellcheck="false" autocomplete="off">
+      </label>
+      <label class="f" style="margin-bottom:0">
+        <span>Position along the foot of the page</span>
+        <span class="row" id="side">
+          <button type="button" class="side" data-side="left">Bottom left</button>
+          <button type="button" class="side" data-side="centre">Bottom centre</button>
+          <button type="button" class="side on" data-side="right">Bottom right</button>
+        </span>
+      </label>
+    </div>
+    <p class="muted" style="margin:12px 0 0">
+      Pages: <span class="mono">1</span> &middot; <span class="mono">1,3</span>
+      &middot; <span class="mono">2-5</span> &middot; <span class="mono">all</span>
+      &middot; <span class="mono">first</span> &middot;
+      <span class="mono">last</span> &mdash; or a mixture,
+      <span class="mono">1,4-6,last</span>. Every page you name gets its own
+      stamp and its own signature, all inside the one signed PDF. A page a
+      document does not have is reported, not signed.
+    </p>
+    <div class="note">
+      The stamp is placed <b>exactly where you ask for it</b> &mdash; nothing is
+      shifted aside to avoid what is already on the page. It is drawn on top,
+      so where it lands on text, a table or an image it will hide it. Preview
+      first: every overlap is named below and again before you sign.
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="preview" class="primary">Preview placement</button>
+      <span id="prev-state" class="muted"></span>
+    </div>
+    <p class="muted hide" id="drag-hint" style="margin:10px 0 0">
+      <b>Drag any box</b> to put the signature where you want it &mdash; the
+      red box turns green where it is clear of everything on the page. Arrow
+      keys nudge it a point at a time, <span class="mono">Shift</span> +
+      arrow ten. What you leave on screen is what gets signed.
+    </p>
+    <p class="muted hide" id="text-hint" style="margin:8px 0 0">
+      <b>Add text</b> puts a remark, a reference number or a date on the
+      page: type it in the
+      box under the page, then drag it into place. <b>Enlarge</b> a page to
+      line it up against a column. The text is written into the page
+      <b>before</b> it is signed, so the signature covers it and it cannot be
+      changed afterwards. <b>Add stamp</b>, <b>Add address</b> and
+      <b>Add letterhead</b> do the same with your saved images; drag them,
+      and set their size under the page.
+    </p>
+    <div id="stamp-row" style="margin-top:12px"></div>
+    <div id="prev-out"></div>
+  </section>
+
+  <section>
+    <h2>4 &middot; Sign</h2>
+    <div class="pinbar">
+      <button id="sign" class="primary">Sign</button>
+      <span id="sign-state" class="muted"></span>
+    </div>
+    <div class="note" id="sign-warn">
+      The PIN is asked for in a <b>desktop dialog</b>, never in this page &mdash;
+      a password box in a browser is something the browser offers to save and
+      sync, and a token PIN must not go anywhere near that. Watch for the
+      prompt; if you cannot see it, check behind this window. Repeated wrong
+      PINs can lock the token.
+    </div>
+    <div id="sign-out"></div>
+  </section>
+
+  <!-- AGPL section 5(d): an interactive interface has to carry the legal
+       notices, and point at the source. SOURCE_URL below is that pointer. -->
+  <footer class="muted" style="margin-top:28px;padding-top:16px;
+          border-top:1px solid var(--line);font-size:12px;line-height:1.7">
+    <b>DSC Signer</b> &mdash; Designed by Deccan Stat Books in Pune.
+    Assembled by Claude in a datacentre.<br>
+    Copyright &copy; 2026 Deccan Stat Books. Free software under the
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL v3</a>, with
+    <b>absolutely no warranty</b>. You are entitled to the source code
+    <span id="src"></span>.<br>
+    Check every signature you rely on.
+  </footer>
+</main>
+
+<div id="confirm" class="hide modal">
+  <div class="sheet">
+    <h2>Check this before signing</h2>
+    <div id="confirm-body"></div>
+    <label class="check">
+      <input type="checkbox" id="confirm-ok">
+      <span>I understand the signature is drawn <b>on top of the page</b> at
+        the position I chose, and that where it lands on existing text, a
+        table or an image it will cover it. The original file is not
+        changed.</span>
+    </label>
+    <div class="row" style="justify-content:flex-end;margin-top:18px">
+      <button id="confirm-cancel">Cancel</button>
+      <button id="confirm-go" class="primary" disabled>Sign</button>
+    </div>
+  </div>
+</div>
+
+<div id="done" class="hide modal">
+  <div class="sheet">
+    <h2 id="done-title">Signed</h2>
+    <div id="done-body"></div>
+    <div class="row" style="justify-content:space-between;margin-top:18px">
+      <span class="muted">Open anything you need first &mdash; closing shuts
+        the signer down.</span>
+      <button id="done-close" class="primary">Close and quit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = new URLSearchParams(location.search).get("k") || "";
+let FILES = [], PLAN = [], TOKEN = null, SIDE = "right";
+/* Pages on screen (VIEWS: the signed pages, then EXTRA - pages shown only to
+   type on) and the text typed onto them. TEXTS are tied to a document and a
+   page, not to a preview, so they survive previewing again. */
+let VIEWS = [], EXTRA = [], TEXTS = [], NEXT_TEXT = 1, TEXT_STYLE = {
+  size: 9, colour: "black" };
+/* The office's saved images. STAMPINFO is what the server has, by kind
+   ({stamp: url, aspect} or {stamp: null}); STAMPS are the places they have
+   been put, in points. SIZE is the last width used per kind, so a second
+   stamp comes out the size you settled on for the first. */
+let STAMPINFO = {}, STAMPS = [];
+const KINDS_IMG = {
+  round: { label: "Round stamp", add: "Add stamp", size: 100, min: 40, max: 200 },
+  address: { label: "Address stamp", add: "Add address", size: 150, min: 80, max: 360 },
+  letterhead: { label: "Letterhead", add: "Add letterhead", size: null, min: 200, max: null },
+};
+const SIZE = {};
+/* What the thumbnails on screen were rendered for. Comparing it against the
+   current settings is how the confirmation knows whether it can show you a
+   real overlap count or has to admit the selection was never previewed. */
+let PREVIEWED = "";
+
+/* AGPL section 5(d): an interactive interface has to tell the user where the
+   source is. The executable travels on its own, so "it ships alongside this
+   program" stops being true the moment someone is handed the .exe - this
+   link is what stands in its place. */
+const SOURCE_URL = "https://github.com/j-blip42/DSCSigner";
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Key": KEY },
+    body: JSON.stringify(body || {})
+  });
+  const j = await r.json().catch(() => ({ error: "bad response from server" }));
+  if (!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status));
+  return j;
+}
+
+function busy(el, on, msg) {
+  el.innerHTML = on ? '<span class="spin"></span> ' + esc(msg || "working…")
+                    : esc(msg || "");
+}
+
+/* ---- token ---- */
+$("#probe").onclick = async () => {
+  const st = $("#probe-state");
+  busy(st, true, "probing PKCS#11 modules…");
+  try {
+    const j = await api("/api/probe");
+    TOKEN = j;
+    busy(st, false, "");
+    const box = $("#token-out");
+    box.classList.remove("hide");
+    let h = `<table>
+      <tr><th style="width:130px">Module</th><td class="mono">${esc(j.module)}</td></tr>
+      <tr><th>Token</th><td class="mono">${esc(j.token)} &middot; slot ${esc(j.slot_id)}
+          (index ${esc(j.slot_index)}) &middot; ${esc(j.serial)}</td></tr>
+      <tr><th>Certificates</th><td>${j.n_certs} on the token &mdash;
+          ${j.n_leaves} signing, ${j.n_ca} CA, ${j.n_other} other</td></tr>`;
+    if (j.cert) {
+      h += `<tr><th>Will sign as</th><td><b>${esc(j.cert.cn)}</b><br>
+        <span class="muted">issued by ${esc(j.cert.issuer)} &middot; valid
+        ${esc(j.cert.from)} to ${esc(j.cert.to)}</span>
+        ${j.cert.expired ? ' <span class="chip bad">EXPIRED</span>' : ""}</td></tr>
+        <tr><th>Stamp</th><td><pre class="mono" style="margin:0;white-space:pre-wrap"
+        >${esc(j.stamp)}</pre></td></tr>`;
+    }
+    h += "</table>";
+    if (j.warning) h += `<div class="note">${esc(j.warning)}</div>`;
+    if (j.deferred) h += `<div class="note">This token will not show its
+      certificate without the PIN. It will be confirmed when you sign.</div>`;
+    box.innerHTML = h;
+  } catch (e) {
+    busy(st, false, "");
+    $("#token-out").classList.remove("hide");
+    $("#token-out").innerHTML = `<div class="note bad">${esc(e.message)}</div>`;
+  }
+};
+
+/* ---- documents ---- */
+function renderFiles() {
+  $("#file-count").textContent = FILES.length
+    ? `${FILES.length} document${FILES.length > 1 ? "s" : ""} selected.`
+    : "No documents selected.";
+  $("#file-list").innerHTML = FILES.map(f => esc(f)).join("<br>");
+}
+let picking = false;
+async function pick(mode) {
+  if (picking) return;                    // one dialog at a time
+  picking = true;
+  const btns = [$("#pick-files"), $("#pick-folder")];
+  btns.forEach(b => b.disabled = true);
+  const hint = $("#file-count");
+  const was = hint.textContent;
+  hint.innerHTML = '<span class="spin"></span> A file dialog is open &mdash; '
+    + 'if you cannot see it, check behind this window.';
+  try {
+    const j = await api("/api/browse", { mode });
+    const seen = new Set(FILES);
+    for (const p of j.paths) if (!seen.has(p)) FILES.push(p);
+    renderFiles();
+  } catch (e) {
+    hint.textContent = was;
+    alert(e.message);
+  } finally {
+    picking = false;
+    btns.forEach(b => b.disabled = false);
+    if (hint.querySelector(".spin")) renderFiles();
+  }
+}
+$("#pick-files").onclick = () => pick("files");
+$("#pick-folder").onclick = () => pick("folder");
+$("#clear-files").onclick = () => { FILES = []; PLAN = []; PREVIEWED = "";
+                                    VIEWS = []; EXTRA = []; TEXTS = [];
+                                    STAMPS = [];
+                                    renderFiles();
+                                    $("#prev-out").innerHTML = "";
+                                    $("#drag-hint").classList.add("hide");
+                                    $("#text-hint").classList.add("hide");
+                                    $("#prev-state").textContent = ""; };
+
+/* ---- placement ---- */
+$("#side").onclick = e => {
+  const b = e.target.closest(".side");
+  if (!b) return;
+  SIDE = b.dataset.side;
+  $("#side").querySelectorAll(".side").forEach(x => x.classList.toggle(
+    "on", x === b));
+};
+
+/* The wording and the mark are still fixed - the server falls back to the
+   defaults in sign_dsc.py for anything not sent. Pages and position are not:
+   they are asked for here and honoured exactly, which is why the settings
+   travel with every call and why a stale preview has to be detectable. */
+function opts() {
+  return { paths: FILES, pages: $("#pages").value.trim() || "1", side: SIDE };
+}
+function settingsKey() {
+  return JSON.stringify([FILES, $("#pages").value.trim() || "1", SIDE]);
+}
+
+$("#preview").onclick = async () => {
+  if (!FILES.length) return alert("Choose some documents first.");
+  const st = $("#prev-state");
+  busy(st, true, "rendering… converting any Word documents first");
+  try {
+    const key = settingsKey();
+    const j = await api("/api/preview", opts());
+    PLAN = j.rows;
+    PREVIEWED = key;
+    const docs = new Set(j.rows.map(r => r.name)).size;
+    const added = j.rows.filter(r => r.added_page).length;
+    busy(st, false, `${j.rows.length} signature${j.rows.length > 1 ? "s" : ""} `
+      + `on ${docs} document${docs > 1 ? "s" : ""}, ${j.collisions} landing on `
+      + `existing content` + (added ? `, ${added} given a signature page.` : "."));
+    // Anything that could not be converted is named here rather than being
+    // quietly absent from the thumbnails.
+    const bad = (j.errors || []).length
+      ? `<div class="note bad">Could not be prepared:<br>`
+        + j.errors.map(esc).join("<br>") + `</div>`
+      : "";
+    // Each row keeps the position it was given, so "reset" has something to
+    // go back to after the box has been dragged around.
+    PLAN.forEach(r => { r.rect0 = r.rect.slice(); });
+    // A page shown only for typing on, that is now signed as well, does not
+    // need showing twice.
+    EXTRA = EXTRA.filter(x => FILES.includes(x.origin) && !PLAN.some(
+      r => r.origin === x.origin && r.page === x.page));
+    const docsOpt = FILES.map((f, k) => `<option value="${k}">`
+      + `${esc(f.split(/[\\/]/).pop())}</option>`).join("");
+    $("#prev-out").innerHTML = bad
+      + `<div class="row" style="margin-top:12px;gap:8px">
+           <span class="muted">Type on a page that is not being signed:</span>
+           <select id="pp-doc"${FILES.length > 1 ? "" : ' class="hide"'}
+             >${docsOpt}</select>
+           <span class="muted">page</span>
+           <input type="text" id="pp-page" style="width:60px"
+                  spellcheck="false" autocomplete="off">
+           <button id="pp-go">Show page</button>
+           <span id="pp-state" class="muted"></span>
+         </div>
+         <div class="thumbs" id="thumbs"></div>`;
+    $("#pp-go").onclick = showPage;
+    $("#pp-page").onkeydown = e => { if (e.key === "Enter") showPage(); };
+    renderViews();
+    $("#drag-hint").classList.remove("hide");
+    $("#text-hint").classList.remove("hide");
+    // Text typed on a page this preview no longer shows - the pages to sign
+    // were changed - brings that page back rather than being lost from view.
+    for (const t of TEXTS.concat(STAMPS)) {
+      if (FILES.includes(t.origin) && viewOf(t.origin, t.page) < 0) {
+        await fetchPage(t.origin, t.page).catch(() => {});
+      }
+    }
+  } catch (e) {
+    busy(st, false, "");
+    PREVIEWED = "";
+    $("#prev-out").innerHTML = `<div class="note bad">${esc(e.message)}</div>`;
+  }
+};
+/* ---- moving the box by hand ----
+   The preview image is the page, rendered at a known scale; the box is an
+   element over it. Everything is kept in POINTS, the page's own units, and
+   only turned into screen pixels at the last moment - the thumbnail is
+   displayed at whatever width the column happens to be, so pixels are not a
+   unit anything can be stored in. */
+const KINDS = { text: "text", image: "an image", drawing: "a filled shape",
+                signature: "an existing signature" };
+
+function overlaps(r) {
+  const [x, y, w, h] = r.rect, kinds = [];
+  for (const o of r.obs || []) {
+    if (o[0] < x + w && o[2] > x && o[1] < y + h && o[3] > y) {
+      const k = KINDS[o[4]] || o[4];
+      if (!kinds.includes(k)) kinds.push(k);
+    }
+  }
+  return kinds;
+}
+
+function paint(i) {
+  const r = PLAN[i], thumb = $(`.thumb[data-i="${i}"]`);
+  if (!thumb) return;
+  const box = thumb.querySelector(".box");
+  box.style.left = (r.rect[0] / r.pw * 100) + "%";
+  box.style.top = (r.rect[1] / r.ph * 100) + "%";
+  box.style.width = (r.rect[2] / r.pw * 100) + "%";
+  box.style.height = (r.rect[3] / r.ph * 100) + "%";
+  const hit = r.added_page ? [] : overlaps(r);
+  box.classList.toggle("clear", !hit.length);
+  const chip = thumb.querySelector(".chip");
+  // "clear" on a document that only became clear because a page was added
+  // would read as "there was room". Say what actually happened.
+  if (r.added_page) {
+    chip.className = "chip warn";
+    chip.textContent = "signature page added";
+  } else if (hit.length) {
+    chip.className = "chip bad";
+    chip.textContent = "overlaps: " + hit.join("; ");
+  } else {
+    chip.className = "chip good";
+    chip.textContent = "clear";
+  }
+  const moved = r.rect[0] !== r.rect0[0] || r.rect[1] !== r.rect0[1];
+  thumb.querySelector(`[data-at="${i}"]`).textContent =
+    moved ? `moved to ${Math.round(r.rect[0])}, ${Math.round(r.rect[1])}pt` : "";
+}
+
+function countBad() {
+  const n = PLAN.filter(r => !r.added_page && overlaps(r).length).length;
+  const moved = PLAN.filter(r => r.rect[0] !== r.rect0[0]
+                              || r.rect[1] !== r.rect0[1]).length;
+  busy($("#prev-state"), false,
+    `${PLAN.length} signature${PLAN.length > 1 ? "s" : ""} on `
+    + `${new Set(PLAN.map(r => r.name)).size} document`
+    + `${new Set(PLAN.map(r => r.name)).size > 1 ? "s" : ""}, `
+    + `${n} landing on existing content`
+    + (moved ? `, ${moved} moved by hand.` : "."));
+}
+
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+function place(i, x, y) {
+  const r = PLAN[i];
+  r.rect[0] = clamp(x, 0, r.pw - r.rect[2]);
+  r.rect[1] = clamp(y, 0, r.ph - r.rect[3]);
+  paint(i);
+  countBad();
+}
+
+function wireBoxes() {
+  document.querySelectorAll(".thumb[data-i]").forEach(thumb => {
+    const i = +thumb.dataset.i, box = thumb.querySelector(".box");
+    const img = thumb.querySelector("img");
+    box.onpointerdown = e => {
+      e.preventDefault();
+      box.setPointerCapture(e.pointerId);
+      box.classList.add("dragging");
+      // Points per screen pixel, read at grab time: the column can be any
+      // width, and the window can be resized between one drag and the next.
+      const k = PLAN[i].pw / (img.clientWidth || 1);
+      const sx = e.clientX, sy = e.clientY;
+      const [x0, y0] = [PLAN[i].rect[0], PLAN[i].rect[1]];
+      box.onpointermove = ev =>
+        place(i, x0 + (ev.clientX - sx) * k, y0 + (ev.clientY - sy) * k);
+      const done = () => {
+        box.classList.remove("dragging");
+        box.onpointermove = box.onpointerup = box.onpointercancel = null;
+      };
+      box.onpointerup = box.onpointercancel = done;
+    };
+    box.onkeydown = e => {
+      const step = e.shiftKey ? 10 : 1;
+      const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0],
+                  ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      place(i, PLAN[i].rect[0] + d[0], PLAN[i].rect[1] + d[1]);
+    };
+    paint(i);
+  });
+  document.querySelectorAll("[data-all]").forEach(b => {
+    b.onclick = () => {
+      // The same spot on every page, not the same fraction of the page: a
+      // signature sits at a distance from the corner, and pages in one batch
+      // are rarely all the same size.
+      const src = PLAN[+b.dataset.all];
+      PLAN.forEach((r, i) => place(i, src.rect[0], src.rect[1]));
+    };
+  });
+  document.querySelectorAll("[data-reset]").forEach(b => {
+    b.onclick = () => {
+      const i = +b.dataset.reset;
+      place(i, PLAN[i].rect0[0], PLAN[i].rect0[1]);
+    };
+  });
+  countBad();
+}
+
+/* ---- pages on screen ----
+   VIEWS is rebuilt from PLAN and EXTRA on every render. A signed page's view
+   carries `sig`, its index in PLAN, which is what the drag code works with;
+   a page shown only to type on has none, and no signature box. */
+function viewOf(origin, page) {
+  return VIEWS.findIndex(v => v.origin === origin && v.page === page);
+}
+
+function renderViews() {
+  const wide = new Set(VIEWS.filter(v => v.wide).map(v => v.origin + "|" + v.page));
+  VIEWS = PLAN.map((r, i) => Object.assign({ sig: i }, r))
+    .concat(EXTRA.map(x => Object.assign({ sig: null }, x)));
+  VIEWS.forEach(v => { v.wide = wide.has(v.origin + "|" + v.page); });
+  const host = $("#thumbs");
+  if (!host) return;
+  host.innerHTML = VIEWS.map((v, vi) => {
+    const s = v.sig, r = s == null ? null : PLAN[s];
+    return `<div class="thumb${v.wide ? " wide" : ""}" data-v="${vi}"
+                 ${r ? `data-i="${s}"` : ""}>
+      <div class="shot"><img src="${esc(v.png)}" alt="">${r
+        ? `<div class="box" tabindex="0" role="application"
+             aria-label="signature position on ${esc(v.name)} page ${v.page}"
+             ><span class="grip">drag</span></div>` : ""}</div>
+      <div class="cap">${esc(v.name)} &middot; p${v.page}
+        ${r ? '<span class="chip"></span>'
+            : '<span class="chip">text only &mdash; not signed on this page</span>'}
+        ${r && r.note ? `<div class="muted" style="margin-top:4px">${esc(r.note)}</div>`
+                      : ""}
+        <div class="capbar">
+          ${r ? `<button data-all="${s}">Use this spot on all</button>
+                 <button data-reset="${s}">Reset</button>`
+              : `<button data-drop="${vi}">Remove page</button>`}
+          <button data-addtext="${vi}">Add text</button>
+          ${Object.entries(KINDS_IMG).map(([k, d]) =>
+            `<button data-addstamp="${vi}" data-kind="${k}">${d.add}</button>`).join("")}
+          <button data-wide="${vi}">${v.wide ? "Shrink" : "Enlarge"}</button>
+          ${r ? `<span class="muted mono" data-at="${s}"></span>` : ""}
+        </div>
+        <div class="tedits"></div>
+      </div></div>`;
+  }).join("");
+  wireBoxes();
+  host.querySelectorAll("[data-addtext]").forEach(b => {
+    b.onclick = () => addText(+b.dataset.addtext, "");
+  });
+  host.querySelectorAll("[data-addstamp]").forEach(b => {
+    b.onclick = () => addStamp(+b.dataset.addstamp, b.dataset.kind);
+  });
+  host.querySelectorAll("[data-wide]").forEach(b => {
+    b.onclick = () => {
+      const v = VIEWS[+b.dataset.wide];
+      v.wide = !v.wide;
+      renderViews();
+    };
+  });
+  host.querySelectorAll("[data-drop]").forEach(b => {
+    b.onclick = () => {
+      const v = VIEWS[+b.dataset.drop];
+      const here = t => t.origin === v.origin && t.page === v.page;
+      const n = TEXTS.filter(here).length + STAMPS.filter(here).length;
+      if (n && !confirm(`Remove this page and the ${n} item${n > 1 ? "s" : ""}`
+                        + ` (text or stamp) put on it?`)) return;
+      TEXTS = TEXTS.filter(t => !here(t));
+      STAMPS = STAMPS.filter(s => !here(s));
+      EXTRA = EXTRA.filter(x => !(x.origin === v.origin && x.page === v.page));
+      renderViews();
+    };
+  });
+  VIEWS.forEach((v, vi) => renderTexts(vi));
+}
+
+async function fetchPage(origin, page) {
+  const j = await api("/api/page", { origin, page });
+  if (viewOf(j.origin, j.page) < 0) EXTRA.push(j);
+  renderViews();
+  return viewOf(j.origin, j.page);
+}
+
+async function showPage() {
+  const st = $("#pp-state");
+  const origin = FILES[+($("#pp-doc").value || 0)];
+  const page = parseInt($("#pp-page").value, 10);
+  if (!origin) return;
+  if (!(page >= 1)) { st.textContent = "Give a page number."; return; }
+  const at = viewOf(origin, page);
+  if (at >= 0) {
+    st.textContent = "That page is already shown.";
+    $(`.thumb[data-v="${at}"]`).scrollIntoView({ block: "center" });
+    return;
+  }
+  busy(st, true, "rendering…");
+  try {
+    const vi = await fetchPage(origin, page);
+    busy(st, false, "");
+    $(`.thumb[data-v="${vi}"]`).scrollIntoView({ block: "center" });
+  } catch (e) {
+    busy(st, false, e.message);
+  }
+}
+
+/* ---- typed text ----
+   Positions are in points from the top left of the page, like the signature
+   box; the signer takes them in that form. */
+const COLOURS = { black: "#000", blue: "#0d33a6", red: "#bf1a1a" };
+/* What the signer's font can show, after it has swapped curly quotes, dashes
+   and the rupee sign for plain ones - see _REMARK_PLAIN in sign_dsc.py. */
+const PLAIN = /[‘’“”–—− …₹\t]/g;
+function unshowable(s) {
+  return [...new Set(s.replace(PLAIN, "").replace(/\n/g, "")
+    .split("").filter(c => c.charCodeAt(0) > 255 || c.charCodeAt(0) < 32))];
+}
+
+function addText(vi, text) {
+  const v = VIEWS[vi];
+  // Each new box a line below the last, so two are never stacked exactly
+  // and one hidden under the other.
+  const n = TEXTS.filter(t => t.origin === v.origin && t.page === v.page).length;
+  const t = { id: NEXT_TEXT++, origin: v.origin, page: v.page,
+              x: Math.round(v.pw * 0.35),
+              y: Math.round(Math.min(v.ph * 0.5 + n * 16, v.ph - 30)),
+              text, size: TEXT_STYLE.size, colour: TEXT_STYLE.colour };
+  TEXTS.push(t);
+  // Text is lined up against columns, which the thumbnail is too small for.
+  if (!v.wide) { v.wide = true; renderViews(); } else renderTexts(vi);
+  const ta = document.querySelector(`[data-tid="${t.id}"] textarea`);
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function paintText(t, el) {
+  const v = VIEWS[viewOf(t.origin, t.page)];
+  if (!v || !el) return;
+  el.style.left = (t.x / v.pw * 100) + "%";
+  el.style.top = (t.y / v.ph * 100) + "%";
+  el.style.fontSize = (t.size / v.pw * 100) + "cqw";
+  el.style.color = COLOURS[t.colour] || "#000";
+  el.classList.toggle("empty", !t.text.trim());
+  el.textContent = t.text.trim() ? t.text.replace(/\s+$/, "") : "type below";
+}
+
+function renderTexts(vi) {
+  const v = VIEWS[vi], thumb = $(`.thumb[data-v="${vi}"]`);
+  if (!v || !thumb) return;
+  const shot = thumb.querySelector(".shot"), img = shot.querySelector("img");
+  const eds = thumb.querySelector(".tedits");
+  shot.querySelectorAll(".txt, .stmp").forEach(n => n.remove());
+  eds.innerHTML = "";
+  // Stamps first: the signer writes the stamp, then the text over it.
+  renderStamps(v, shot, img, eds, vi);
+  for (const t of TEXTS.filter(t => t.origin === v.origin && t.page === v.page)) {
+    const el = document.createElement("div");
+    el.className = "txt";
+    el.tabIndex = 0;
+    el.title = "drag to move; arrow keys nudge";
+    shot.appendChild(el);
+    paintText(t, el);
+
+    const ed = document.createElement("div");
+    ed.className = "tedit";
+    ed.dataset.tid = t.id;
+    ed.innerHTML = `<textarea rows="2" spellcheck="false"
+        placeholder="Type the text to put on the page"></textarea>
+      <select data-k="size">${[6, 7, 8, 9, 10, 11, 12, 14, 16, 18].map(s =>
+        `<option${s === t.size ? " selected" : ""}>${s}</option>`).join("")}</select>
+      <select data-k="colour">${Object.keys(COLOURS).map(c =>
+        `<option${c === t.colour ? " selected" : ""}>${c}</option>`).join("")}</select>
+      <button>Remove</button><div class="warn"></div>`;
+    eds.appendChild(ed);
+    const ta = ed.querySelector("textarea"), warn = ed.querySelector(".warn");
+    ta.value = t.text;
+    const check = () => {
+      const bad = unshowable(t.text);
+      warn.textContent = bad.length ? "The PDF font cannot show: "
+        + bad.slice(0, 8).join(" ") + " - signing will refuse this." : "";
+    };
+    check();
+    ta.oninput = () => { t.text = ta.value; paintText(t, el); check(); };
+    ta.onfocus = () => el.classList.add("sel");
+    ta.onblur = () => el.classList.remove("sel");
+    ed.querySelector('[data-k="size"]').onchange = e => {
+      t.size = TEXT_STYLE.size = +e.target.value; paintText(t, el);
+    };
+    ed.querySelector('[data-k="colour"]').onchange = e => {
+      t.colour = TEXT_STYLE.colour = e.target.value; paintText(t, el);
+    };
+    ed.querySelector("button").onclick = () => {
+      TEXTS = TEXTS.filter(x => x !== t);
+      renderTexts(vi);
+    };
+
+    const moveTo = (x, y) => {
+      // Kept wholly on the page: text half over the edge is text missing
+      // from the signed copy.
+      const k = v.pw / (img.clientWidth || 1);
+      t.x = clamp(x, 0, Math.max(0, v.pw - el.offsetWidth * k));
+      t.y = clamp(y, 0, Math.max(0, v.ph - el.offsetHeight * k));
+      paintText(t, el);
+    };
+    el.onpointerdown = e => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      el.classList.add("dragging");
+      const k = v.pw / (img.clientWidth || 1);
+      const sx = e.clientX, sy = e.clientY, x0 = t.x, y0 = t.y;
+      el.onpointermove = ev => moveTo(x0 + (ev.clientX - sx) * k,
+                                      y0 + (ev.clientY - sy) * k);
+      el.onpointerup = el.onpointercancel = () => {
+        el.classList.remove("dragging");
+        el.onpointermove = el.onpointerup = el.onpointercancel = null;
+      };
+    };
+    el.ondblclick = () => ta.focus();
+    el.onkeydown = e => {
+      const step = e.shiftKey ? 10 : 1;
+      const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0],
+                  ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      moveTo(t.x + d[0], t.y + d[1]);
+    };
+  }
+}
+
+/* ---- the office's saved images: stamps and letterhead ---- */
+const has = k => !!(STAMPINFO[k] && STAMPINFO[k].stamp);
+
+function showStamps() {
+  const where = (Object.values(STAMPINFO)[0] || {}).where || "";
+  const dir = where.replace(/[\\/][^\\/]*$/, "");
+  $("#stamp-row").innerHTML = Object.entries(KINDS_IMG).map(([k, d]) => {
+    const i = STAMPINFO[k] || {};
+    return `<div class="row" style="gap:10px;margin-bottom:6px">
+      <span class="muted" style="min-width:110px">${d.label}:</span>
+      ${i.stamp ? `<img class="stampchip" src="${esc(i.stamp)}" alt=""
+                     style="${k === "round" ? "" : "border-radius:4px"}">`
+                : `<span class="muted">${esc(i.error || "none chosen yet")}</span>`}
+      <button type="button" data-choose="${k}">${i.stamp ? "Replace…"
+        : "Choose image…"}</button></div>`;
+  }).join("") + `<div class="muted" style="font-size:12px">Kept in
+    <span class="mono">${esc(dir)}</span> &mdash; outside the program, so
+    they survive updates.</div>`;
+  $("#stamp-row").querySelectorAll("[data-choose]").forEach(b => {
+    b.onclick = () => chooseStamp(b.dataset.choose);
+  });
+}
+
+async function chooseStamp(kind) {
+  const bs = $("#stamp-row").querySelectorAll("button");
+  bs.forEach(b => b.disabled = true);
+  try {
+    const j = await api("/api/stamp", { choose: kind });
+    STAMPINFO = j.kinds;
+    showStamps();
+    VIEWS.forEach((v, vi) => renderTexts(vi));      // new image everywhere
+  } catch (e) {
+    alert(e.message);
+    bs.forEach(b => b.disabled = false);
+  }
+}
+api("/api/stamp").then(j => { STAMPINFO = j.kinds; showStamps(); })
+  .catch(e => { $("#stamp-row").textContent = e.message; });
+
+async function addStamp(vi, kind) {
+  if (!has(kind)) {
+    await chooseStamp(kind);
+    if (!has(kind)) return;
+  }
+  const v = VIEWS[vi], d = KINDS_IMG[kind], aspect = STAMPINFO[kind].aspect || 1;
+  let w = SIZE[kind] || d.size || v.pw, x, y;
+  w = Math.min(w, v.pw);
+  const h = w * aspect;
+  if (kind === "letterhead") {
+    x = (v.pw - w) / 2; y = 0;              // across the top of the page
+  } else if (kind === "address") {
+    x = v.pw * 0.1 + 115; y = v.ph - h - 140; // beside the round stamp
+  } else {
+    x = v.pw * 0.1; y = v.ph - h - 110;      // bottom left, by the signature
+  }
+  STAMPS.push({ id: NEXT_TEXT++, kind, origin: v.origin, page: v.page,
+                x: Math.round(clamp(x, 0, Math.max(0, v.pw - w))),
+                y: Math.round(clamp(y, 0, Math.max(0, v.ph - h))), w, h });
+  if (!v.wide) { v.wide = true; renderViews(); } else renderTexts(vi);
+}
+
+/* The letterhead goes on every page of a letter, so it can be copied to
+   all of them at once - pages not on screen are fetched to show it. */
+async function stampEveryPage(s, npages) {
+  for (let p = 1; p <= npages; p++) {
+    if (STAMPS.some(o => o.origin === s.origin && o.page === p && o.kind === s.kind)) continue;
+    if (viewOf(s.origin, p) < 0) {
+      try { await fetchPage(s.origin, p); } catch (e) { continue; }
+    }
+    STAMPS.push(Object.assign({}, s, { id: NEXT_TEXT++, page: p }));
+  }
+  renderViews();
+}
+
+function renderStamps(v, shot, img, eds, vi) {
+  for (const s of STAMPS.filter(s => s.origin === v.origin && s.page === v.page)) {
+    if (!has(s.kind)) continue;
+    const d = KINDS_IMG[s.kind], info = STAMPINFO[s.kind];
+    const el = document.createElement("img");
+    el.className = "stmp";
+    el.src = info.stamp;
+    el.alt = d.label;
+    el.tabIndex = 0;
+    el.draggable = false;
+    el.title = "drag to move; arrow keys nudge";
+    shot.appendChild(el);
+    const paintS = () => {
+      el.style.left = (s.x / v.pw * 100) + "%";
+      el.style.top = (s.y / v.ph * 100) + "%";
+      el.style.width = (s.w / v.pw * 100) + "%";
+    };
+    paintS();
+
+    const ed = document.createElement("div");
+    ed.className = "sedit";
+    const npages = v.npages || 1;
+    ed.innerHTML = `<span><b>${esc(d.label)}</b> size</span>
+      <input type="range" min="${d.min}" max="${Math.round(d.max || v.pw)}"
+             step="2" value="${Math.round(s.w)}">
+      <span class="mono" style="min-width:110px"></span>
+      ${s.kind === "letterhead" && npages > 1
+        ? `<button data-every>On every page (${npages})</button>` : ""}
+      <button data-remove>Remove</button>`;
+    eds.appendChild(ed);
+    const range = ed.querySelector("input"), label = ed.querySelector(".mono");
+    const showSize = () => {
+      label.textContent = `${Math.round(s.w)} pt (${Math.round(s.w * 25.4 / 72)} mm)`;
+    };
+    showSize();
+    range.oninput = () => {
+      // Resized about its centre, so it stays where it was put.
+      const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+      s.w = SIZE[s.kind] = +range.value;
+      s.h = s.w * (info.aspect || 1);
+      s.x = clamp(cx - s.w / 2, 0, Math.max(0, v.pw - s.w));
+      s.y = clamp(cy - s.h / 2, 0, Math.max(0, v.ph - s.h));
+      paintS(); showSize();
+    };
+    range.onfocus = () => el.classList.add("sel");
+    range.onblur = () => el.classList.remove("sel");
+    ed.querySelector("[data-remove]").onclick = () => {
+      STAMPS = STAMPS.filter(x => x !== s);
+      renderTexts(vi);
+    };
+    const every = ed.querySelector("[data-every]");
+    if (every) every.onclick = () => stampEveryPage(s, npages);
+
+    const moveTo = (x, y) => {
+      s.x = clamp(x, 0, Math.max(0, v.pw - s.w));
+      s.y = clamp(y, 0, Math.max(0, v.ph - s.h));
+      paintS();
+    };
+    el.onpointerdown = e => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      el.classList.add("dragging");
+      const k = v.pw / (img.clientWidth || 1);
+      const sx = e.clientX, sy = e.clientY, x0 = s.x, y0 = s.y;
+      el.onpointermove = ev => moveTo(x0 + (ev.clientX - sx) * k,
+                                      y0 + (ev.clientY - sy) * k);
+      el.onpointerup = el.onpointercancel = () => {
+        el.classList.remove("dragging");
+        el.onpointermove = el.onpointerup = el.onpointercancel = null;
+      };
+    };
+    el.onkeydown = e => {
+      const step = e.shiftKey ? 10 : 1;
+      const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0],
+                  ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      moveTo(s.x + d[0], s.y + d[1]);
+    };
+  }
+}
+
+function stampsToSend() {
+  return STAMPS.filter(s => FILES.includes(s.origin))
+    .map(s => ({ origin: s.origin, page: s.page, kind: s.kind,
+                 x: s.x, y: s.y, w: s.w, h: s.h }));
+}
+
+/* What travels to the signer: every box with something in it, on a document
+   still in the selection. Sent whether or not the preview is current - the
+   text belongs to a page, not to where the signature goes. */
+function textsToSend() {
+  return TEXTS.filter(t => t.text.trim() && FILES.includes(t.origin))
+    .map(t => ({ origin: t.origin, page: t.page, x: t.x, y: t.y,
+                 text: t.text, size: t.size, colour: t.colour }));
+}
+
+/* ---- sign ---- */
+/* Nothing is signed straight off the button. The position was chosen rather
+   than found, so the one thing that must be in front of the user before the
+   PIN prompt is what that position will sit on. */
+$("#sign").onclick = () => {
+  if (!FILES.length) return alert("Choose some documents first.");
+  const fresh = PREVIEWED && PREVIEWED === settingsKey();
+  // What is on screen is what gets signed, so the warning is built from the
+  // boxes as they stand now - not from where the preview first put them.
+  const hit = fresh ? PLAN.map(r => [r, r.added_page ? [] : overlaps(r)])
+                          .filter(p => p[1].length) : [];
+  const moved = fresh ? PLAN.filter(r => r.rect[0] !== r.rect0[0]
+                                      || r.rect[1] !== r.rect0[1]).length : 0;
+  const where = { left: "bottom left", centre: "bottom centre",
+                  right: "bottom right" }[SIDE];
+  const pages = $("#pages").value.trim() || "1";
+  const named = { all: "<b>every page</b>", first: "the <b>first page</b>",
+                  last: "the <b>last page</b>" }[pages.toLowerCase()];
+  const phrase = named || (/[,-]/.test(pages) ? "pages " : "page ")
+    + `<b>${esc(pages)}</b>`;
+  const docs = fresh ? new Set(PLAN.map(r => r.name)).size : FILES.length;
+  let h = `<p style="margin:0 0 10px">Signing <b>${docs} document`
+    + `${docs > 1 ? "s" : ""}</b> at the <b>${esc(where)}</b> of `
+    + `${phrase}. Each page named gets its own signature; the originals are `
+    + `left as they are and a signed copy is written beside each one.</p>`;
+  if (moved) {
+    h += `<p style="margin:0 0 10px"><b>${moved} of ${PLAN.length}</b>
+      ${moved > 1 ? "boxes have" : "box has"} been moved by hand. Those are
+      signed exactly where you left them, not at the ${esc(where)}.</p>`;
+  }
+  const texts = textsToSend();
+  if (texts.length) {
+    const on = [...new Set(texts.map(t => `${t.origin.split(/[\\/]/).pop()} p${t.page}`))];
+    h += `<p style="margin:0 0 10px"><b>${texts.length} text item`
+      + `${texts.length > 1 ? "s" : ""}</b> will be written onto the page`
+      + `${on.length > 1 ? "s" : ""} first (${esc(on.slice(0, 6).join(", "))}`
+      + `${on.length > 6 ? ", &hellip;" : ""}), so the signature covers `
+      + `${texts.length > 1 ? "them" : "it"}. Check the wording &mdash; it `
+      + `cannot be changed once signed.</p>`;
+  }
+  const seals = stampsToSend();
+  for (const [k, d] of Object.entries(KINDS_IMG)) {
+    const these = seals.filter(s => s.kind === k);
+    if (!these.length) continue;
+    const on = [...new Set(these.map(s => `${s.origin.split(/[\\/]/).pop()} p${s.page}`))];
+    h += `<p style="margin:0 0 10px">Your <b>${esc(d.label.toLowerCase())}</b> `
+      + `will be put on ${esc(on.slice(0, 6).join(", "))}`
+      + `${on.length > 6 ? ", &hellip;" : ""}, also before signing.</p>`;
+  }
+  const empty = TEXTS.filter(t => !t.text.trim()).length;
+  if (empty) {
+    h += `<div class="note">${empty} empty text box${empty > 1 ? "es" : ""}
+      will be left out.</div>`;
+  }
+  if (!fresh) {
+    h += `<div class="note">This has <b>not been previewed</b> with these
+      settings, so nothing here can tell you what the stamp will land on.
+      Anything you moved by hand was for the previous settings and will not
+      be used. Cancel and preview it if these documents are unfamiliar.</div>`;
+  } else if (hit.length) {
+    h += `<div class="note bad"><b>${hit.length} signature`
+      + `${hit.length > 1 ? "s" : ""} will be drawn over existing content</b>
+        and will hide what is under it:<br>`
+      + hit.slice(0, 12).map(([r, k]) => `<span class="mono">${esc(r.name)}</span>
+          p${r.page} &mdash; ${esc(k.join("; "))}`).join("<br>")
+      + (hit.length > 12 ? `<br>&hellip; and ${hit.length - 12} more` : "")
+      + `</div>`;
+  } else {
+    h += `<div class="note"><b>No overlap found.</b> Every stamp falls on
+      clear space where it now sits.</div>`;
+  }
+  $("#confirm-body").innerHTML = h;
+  $("#confirm-ok").checked = false;
+  $("#confirm-go").disabled = true;
+  $("#confirm").classList.remove("hide");
+};
+$("#confirm-ok").onchange = e => {
+  $("#confirm-go").disabled = !e.target.checked;
+};
+$("#confirm-cancel").onclick = () => $("#confirm").classList.add("hide");
+$("#confirm-go").onclick = async () => {
+  $("#confirm").classList.add("hide");
+  const st = $("#sign-state");
+  busy(st, true, "preparing documents, then the PIN prompt on your desktop…");
+  $("#sign").disabled = true;
+  try {
+    // The boxes travel with the request only when the preview on screen
+    // belongs to these settings. Otherwise they describe a placement nobody
+    // is looking at, and the server works it out from the pages and the side
+    // instead - which is what the confirmation just said would happen.
+    const fresh = PREVIEWED && PREVIEWED === settingsKey();
+    const body = Object.assign(opts(), { confirm_overwrite: true,
+                                         texts: textsToSend(),
+                                         stamps: stampsToSend() });
+    if (fresh && PLAN.length) {
+      body.placements = PLAN.map(r => ({ origin: r.origin, page: r.page,
+                                         rect: r.rect, ph: r.ph }));
+    }
+    const j = await api("/api/sign", body);
+    busy(st, false, `${j.ok} signed and verified, ${j.bad} failed.`);
+    let h = `<table><tr><th>Output</th><th class="num">Bytes</th>
+      <th class="num">Sigs</th><th>Result</th></tr>` +
+      j.rows.map(r => `<tr><td class="mono">${esc(r.name)}</td>
+        <td class="num">${r.size == null ? "&mdash;" : r.size.toLocaleString()}</td>
+        <td class="num">${r.sigs == null ? "&mdash;" : r.sigs}</td>
+        <td>${r.ok ? '<span class="chip good">PASS</span>'
+                   : '<span class="chip bad">FAIL</span> ' + esc(r.error)}</td></tr>`
+      ).join("") + "</table>";
+    if (j.log && j.log.length) h += `<pre class="log">${esc(j.log.join("\n"))}</pre>`;
+    $("#sign-out").innerHTML = h;
+    showDone(j);
+  } catch (e) {
+    busy(st, false, "");
+    $("#sign-out").innerHTML = `<div class="note bad">${esc(e.message)}</div>`;
+  } finally {
+    $("#sign").disabled = false;
+  }
+};
+
+/* ---- "saved here" dialog ---- */
+function showDone(j) {
+  const done = j.rows.filter(r => r.ok);
+  const dlg = $("#done");
+  const dir = j.folder || "";
+  $("#done-title").textContent = done.length
+    ? `${done.length} document${done.length > 1 ? "s" : ""} signed and saved`
+    : "Nothing was saved";
+  $("#done-body").innerHTML = done.length
+    ? `<p style="margin:0 0 6px">Saved in</p>
+       <p class="mono" style="margin:0 0 14px;word-break:break-all">${esc(dir)}</p>`
+      + done.map(r => `<div class="row" style="margin-bottom:8px">
+          <span class="mono" style="flex:1;word-break:break-all">${esc(r.name)}</span>
+          <button data-open="${esc(r.path)}">Open</button></div>`).join("")
+      + `<div class="row" style="margin-top:12px">
+           <button data-open="${esc(dir)}">Open the folder</button></div>`
+    : `<div class="note bad">Every document failed. Nothing was written.</div>`;
+  dlg.classList.remove("hide");
+  dlg.querySelectorAll("[data-open]").forEach(b => {
+    b.onclick = async () => {
+      const was = b.textContent;
+      b.disabled = true; b.textContent = "opening…";
+      try { await api("/api/open", { path: b.dataset.open }); }
+      catch (e) { alert(e.message); }
+      finally { b.disabled = false; b.textContent = was; }
+    };
+  });
+}
+async function quitServer() {
+  try { await api("/api/quit"); } catch (e) {}
+  document.body.innerHTML =
+    '<main><section><h2>Stopped</h2><p>The signer has shut down and the '
+    + 'signed files are saved. You can close this tab.</p></section></main>';
+}
+
+/* Closing the "signed" dialog ends the session - the work is done at that
+   point. No dismissing it by clicking the backdrop: shutting the signer down
+   should take a deliberate press, not a stray click beside the box. */
+$("#done-close").onclick = quitServer;
+$("#quit").onclick = quitServer;
+
+$("#src").innerHTML = SOURCE_URL
+  ? `at <a href="${esc(SOURCE_URL)}">${esc(SOURCE_URL)}</a>`
+  : "&mdash; it ships alongside this program";
+
+renderFiles();
+</script>
